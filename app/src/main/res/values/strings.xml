@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">YOLO11 Ncnn</string>
+    <string name="camera_permission_denied">需要相机权限才能运行检测</string>
+    <string name="status_loading">正在加载模型…</string>
+
+    <string name="settings_entry">设置</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_mode_title">工作模式</string>
+    <string name="settings_mode_detect">检测：实时检测 / 视频检测</string>
+    <string name="settings_mode_classify">分类：相册图片 / 拍照分类</string>
+    <string name="settings_camera_title">采集摄像头</string>
+    <string name="settings_camera_hint">自动枚举设备上的所有摄像头；切换后返回主界面会自动重连并刷新预览</string>
+    <string name="settings_done">完成</string>
+
+    <string name="media_preview_desc">媒体预览</string>
+    <string name="btn_pick_video">导入视频</string>
+    <string name="btn_pause_video">暂停</string>
+    <string name="btn_resume_video">继续</string>
+    <string name="btn_stop_video">停止</string>
+    <string name="btn_pick_image">相册</string>
+    <string name="btn_shutter">拍照</string>
+    <string name="mode_detect">检测</string>
+    <string name="mode_classify">分类</string>
+</resources>

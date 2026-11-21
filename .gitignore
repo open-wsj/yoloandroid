@@ -1,0 +1,45 @@
+# ---- Android / Gradle 构建产物 ----
+.gradle/
+build/
+app/build/
+.cxx/
+captures/
+*.apk
+*.aab
+*.ap_
+*.hprof
+
+# ---- 本地环境配置（因机器而异，不入库）----
+local.properties
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+
+# ---- Python 模型导出环境 ----
+.venv-model/
+__pycache__/
+*.py[cod]
+export_cls.py
+
+# ---- 模型权重与导出中间产物 ----
+*.pt
+*_ncnn_model/
+
+# ---- 本地产出 / 备份（构建产物、验证截图、源码快照）----
+dist/
+backup/
+*.zip
+
+# ---- 日志与临时文件 ----
+*.log
+*.tmp
+*.swp
+*~
+
+# ---- 操作系统垃圾文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
