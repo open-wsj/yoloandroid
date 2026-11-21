@@ -2,16 +2,20 @@ package com.example.yolo11ncnn;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
@@ -26,9 +30,10 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 应用更新：检查 update.json → 弹窗 → DownloadManager 下载 → SHA-256 校验 → 系统安装器。
+ * 应用更新：检查 update.json → 弹窗 → 应用内下载 → SHA-256 校验 → 系统安装器。
  */
 public final class UpdateManager {
 
@@ -37,9 +42,6 @@ public final class UpdateManager {
             "https://gitee.com/open-zynq/yoloandroid/raw/main/update.json";
 
     private static final String KEY_LAST_CHECK = "last_update_check";
-    private static final String KEY_DOWNLOAD_ID = "update_download_id";
-    private static final String KEY_DOWNLOAD_SHA = "update_download_sha";
-    private static final String KEY_DOWNLOAD_NAME = "update_download_name";
     private static final long CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000;
 
     private UpdateManager() {
@@ -59,6 +61,12 @@ public final class UpdateManager {
     /** 检查回调，在主线程触发；无更新时 info 为 null，出错时 error 非空。 */
     public interface CheckCallback {
         void onResult(UpdateInfo info, String error);
+    }
+
+    private interface DownloadCallback {
+        void onProgress(int percent);
+
+        void onFinished(File apk, String error);
     }
 
     public static int currentVersionCode(Context context) {
@@ -125,8 +133,10 @@ public final class UpdateManager {
                 info.sizeBytes = json.optLong("sizeBytes", 0);
 
                 prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply();
+                Log.i("YOLO11-Update", "check ok, latest=" + info.latestVersionName);
             } catch (Exception e) {
                 error = e.getMessage();
+                Log.w("YOLO11-Update", "check failed: " + e);
             }
 
             UpdateInfo result = info;
@@ -156,15 +166,8 @@ public final class UpdateManager {
                 .setTitle("发现新版本 " + info.latestVersionName)
                 .setMessage(message)
                 .setCancelable(!mandatory)
-                .setPositiveButton("立即更新", (dialog, which) -> {
-                    try {
-                        startDownload(activity, info);
-                        Toast.makeText(activity, "开始下载更新包…", Toast.LENGTH_SHORT).show();
-                    } catch (Exception e) {
-                        Toast.makeText(activity, "下载失败：" + e.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
+                .setPositiveButton("立即更新", (dialog, which) ->
+                        startDownloadWithProgress(activity, info));
         if (mandatory) {
             builder.setNegativeButton("退出应用", (dialog, which) -> activity.finishAffinity());
         } else {
@@ -173,108 +176,134 @@ public final class UpdateManager {
         builder.show();
     }
 
-    public static long startDownload(Context context, UpdateInfo info) {
-        File dir = new File(context.getExternalFilesDir(null), "updates");
-        if (!dir.exists() && !dir.mkdirs()) {
-            throw new IllegalStateException("无法创建下载目录");
+    private static void startDownloadWithProgress(Activity activity, UpdateInfo info) {
+        if (activity.isFinishing() || activity.isDestroyed()) {
+            return;
         }
-        String fileName = "YOLO11-" + info.latestVersionName + ".apk";
-        File apkFile = new File(dir, fileName);
-        if (apkFile.exists() && !apkFile.delete()) {
-            // 忽略删除失败，DownloadManager 会覆盖目标文件
-        }
+        float density = activity.getResources().getDisplayMetrics().density;
+        int padding = (int) (20 * density);
 
-        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(info.apkUrl))
-                .setTitle("YOLO11 更新 " + info.latestVersionName)
-                .setDescription("下载完成后点击安装")
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(
-                        DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(false)
-                .setDestinationInExternalFilesDir(context, null, "updates/" + fileName);
+        ProgressBar progressBar = new ProgressBar(activity, null,
+                android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(100);
+        progressBar.setProgress(0);
 
-        DownloadManager manager =
-                (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
-        if (manager == null) {
-            throw new IllegalStateException("系统下载服务不可用");
-        }
-        long id = manager.enqueue(request);
-        AppPrefs.get(context).edit()
-                .putLong(KEY_DOWNLOAD_ID, id)
-                .putString(KEY_DOWNLOAD_SHA, info.sha256)
-                .putString(KEY_DOWNLOAD_NAME, fileName)
-                .apply();
-        return id;
+        TextView label = new TextView(activity);
+        label.setTextColor(Color.WHITE);
+        label.setText("准备下载…");
+
+        LinearLayout layout = new LinearLayout(activity);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(padding, padding, padding, 0);
+        layout.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        barParams.topMargin = padding / 2;
+        layout.addView(progressBar, barParams);
+
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle("正在下载 " + info.latestVersionName)
+                .setView(layout)
+                .setCancelable(false)
+                .setNegativeButton("取消", (d, which) -> cancelled.set(true))
+                .show();
+
+        download(activity, info, cancelled, new DownloadCallback() {
+            @Override
+            public void onProgress(int percent) {
+                progressBar.setProgress(percent);
+                label.setText(String.format(Locale.US, "已下载 %d%%", percent));
+            }
+
+            @Override
+            public void onFinished(File apk, String error) {
+                if (!activity.isFinishing() && !activity.isDestroyed()) {
+                    dialog.dismiss();
+                }
+                if (error != null) {
+                    Toast.makeText(activity, "更新失败：" + error, Toast.LENGTH_LONG).show();
+                } else if (apk != null) {
+                    installApk(activity, apk);
+                }
+            }
+        });
     }
 
-    /**
-     * 查询下载状态；成功则校验 SHA-256 并拉起安装器。
-     *
-     * @param downloadId 传 -1 表示读取本地保存的下载 id（用于进程被杀后恢复）
-     */
-    public static void handleDownload(Context context, long downloadId) {
-        SharedPreferences prefs = AppPrefs.get(context);
-        long id = downloadId > 0 ? downloadId : prefs.getLong(KEY_DOWNLOAD_ID, -1);
-        if (id <= 0) {
-            return;
-        }
-        DownloadManager manager =
-                (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
-        if (manager == null) {
-            return;
-        }
-
-        try (Cursor cursor = manager.query(
-                new DownloadManager.Query().setFilterById(id))) {
-            if (cursor == null || !cursor.moveToFirst()) {
-                return;
-            }
-            int status = cursor.getInt(
-                    cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-            if (status == DownloadManager.STATUS_FAILED) {
-                prefs.edit().remove(KEY_DOWNLOAD_ID).remove(KEY_DOWNLOAD_SHA).apply();
-                return;
-            }
-            if (status != DownloadManager.STATUS_SUCCESSFUL) {
-                return;
-            }
-
-            Uri uri = manager.getUriForDownloadedFile(id);
-            if (uri == null) {
-                return;
-            }
-            String expectedSha = prefs.getString(KEY_DOWNLOAD_SHA, "");
-            String fileName = prefs.getString(KEY_DOWNLOAD_NAME, "update.apk");
-
-            new Thread(() -> {
-                String error = null;
-                File target = new File(new File(context.getExternalFilesDir(null), "updates"),
-                        fileName);
-                try {
-                    String actualSha = copyAndHash(context, uri, target);
-                    if (!expectedSha.isEmpty()
-                            && !expectedSha.equalsIgnoreCase(actualSha)) {
-                        error = "安装包校验失败（SHA-256 不匹配）";
-                    }
-                } catch (Exception e) {
-                    error = "安装包处理失败：" + e.getMessage();
+    private static void download(Context context, UpdateInfo info, AtomicBoolean cancelled,
+                                 DownloadCallback callback) {
+        Handler mainHandler = new Handler(Looper.getMainLooper());
+        new Thread(() -> {
+            File target = null;
+            try {
+                File dir = new File(context.getExternalFilesDir(null), "updates");
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw new IllegalStateException("无法创建下载目录");
+                }
+                String fileName = "YOLO11-" + info.latestVersionName + ".apk";
+                target = new File(dir, fileName);
+                if (target.exists() && !target.delete()) {
+                    // 目标文件无法删除时直接覆盖写入
                 }
 
-                String failure = error;
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    if (failure != null) {
-                        prefs.edit().remove(KEY_DOWNLOAD_ID)
-                                .remove(KEY_DOWNLOAD_SHA).apply();
-                        Toast.makeText(context, failure, Toast.LENGTH_LONG).show();
-                    } else {
-                        prefs.edit().remove(KEY_DOWNLOAD_ID)
-                                .remove(KEY_DOWNLOAD_SHA).apply();
-                        installApk(context, target);
+                HttpURLConnection connection =
+                        (HttpURLConnection) new URL(info.apkUrl).openConnection();
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(20000);
+                connection.setRequestProperty("User-Agent", "YOLO11-Updater");
+                int code = connection.getResponseCode();
+                if (code != HttpURLConnection.HTTP_OK) {
+                    throw new IllegalStateException("HTTP " + code);
+                }
+
+                long total = connection.getContentLengthLong();
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                int lastPercent = -1;
+                long downloaded = 0;
+
+                try (InputStream input = connection.getInputStream();
+                     FileOutputStream output = new FileOutputStream(target)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int read;
+                    while ((read = input.read(buffer)) > 0) {
+                        if (cancelled.get()) {
+                            throw new IllegalStateException("已取消下载");
+                        }
+                        output.write(buffer, 0, read);
+                        digest.update(buffer, 0, read);
+                        downloaded += read;
+                        if (total > 0) {
+                            int percent = (int) (downloaded * 100 / total);
+                            if (percent != lastPercent) {
+                                lastPercent = percent;
+                                int shown = percent;
+                                mainHandler.post(() -> callback.onProgress(shown));
+                            }
+                        }
                     }
-                });
-            }, "update-install").start();
-        }
+                }
+
+                StringBuilder hex = new StringBuilder();
+                for (byte b : digest.digest()) {
+                    hex.append(String.format(Locale.US, "%02x", b));
+                }
+                if (!info.sha256.isEmpty()
+                        && !info.sha256.equalsIgnoreCase(hex.toString())) {
+                    throw new IllegalStateException("安装包校验失败（SHA-256 不匹配）");
+                }
+
+                File result = target;
+                mainHandler.post(() -> callback.onFinished(result, null));
+            } catch (Exception e) {
+                if (target != null && target.exists() && !target.delete()) {
+                    Log.w("YOLO11-Update", "failed to delete partial file");
+                }
+                String message = e.getMessage() == null ? e.toString() : e.getMessage();
+                Log.w("YOLO11-Update", "download failed: " + message);
+                mainHandler.post(() -> callback.onFinished(null, message));
+            }
+        }, "update-download").start();
     }
 
     public static void installApk(Context context, File apkFile) {
@@ -299,30 +328,5 @@ public final class UpdateManager {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_GRANT_READ_URI_PERMISSION);
         context.startActivity(intent);
-    }
-
-    private static String copyAndHash(Context context, Uri uri, File target) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IllegalStateException("无法创建目录");
-        }
-        try (InputStream input = context.getContentResolver().openInputStream(uri);
-             FileOutputStream output = new FileOutputStream(target)) {
-            if (input == null) {
-                throw new IllegalStateException("无法读取下载文件");
-            }
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = input.read(buffer)) > 0) {
-                output.write(buffer, 0, read);
-                digest.update(buffer, 0, read);
-            }
-        }
-        StringBuilder hex = new StringBuilder();
-        for (byte b : digest.digest()) {
-            hex.append(String.format(Locale.US, "%02x", b));
-        }
-        return hex.toString();
     }
 }

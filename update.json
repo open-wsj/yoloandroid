@@ -1,9 +1,9 @@
 {
-  "latestVersionCode": 5,
-  "latestVersionName": "1.0.3-test",
-  "minSupportedVersionCode": 0,
-  "apkUrl": "http://127.0.0.1:8765/YOLO11-dual-mode-v1.0.2-release.apk",
-  "sha256": "9939f5d282bc23292e4d7acaa4ad3d05f591a044cf854a6b1fb416087e96d0a2",
-  "sizeBytes": 66586548,
-  "changelog": "1. 新增应用内更新：自动检查新版本、后台下载、SHA-256 校验\n2. 设置页新增「检查更新」入口与当前版本显示\n3. 支持可选更新与强制更新两种策略"
+  "latestVersionCode": 4,
+  "latestVersionName": "1.0.2",
+  "minSupportedVersionCode": 2,
+  "apkUrl": "https://gitee.com/open-zynq/yoloandroid/releases/download/v1.0.2/YOLO11-dual-mode-v1.0.2-release.apk",
+  "sha256": "e3c78bd6ecae3968d7a10f3002897a47655b09348e6c1478a0367ece9b69323f",
+  "sizeBytes": 66587016,
+  "changelog": "1. 新增应用内更新：冷启动自动检查、应用内下载、SHA-256 校验\n2. 设置页新增当前版本显示与「检查更新」入口\n3. 支持可选更新与强制更新（minSupportedVersionCode）两种策略"
 }

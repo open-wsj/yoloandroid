@@ -2,6 +2,28 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-11-21
+
+### 新增
+
+- **应用内更新**
+  - 冷启动自动检查（6 小时节流，失败静默）+ 设置页「检查更新」手动入口
+  - 更新源为仓库根目录 `update.json`，支持版本号、更新日志、安装包大小、SHA-256
+  - 应用内下载并显示进度，支持取消；下载完成自动校验 SHA-256
+  - 通过 `FileProvider` 拉起系统安装器；未授权时引导开启「安装未知应用」
+  - 支持可选更新与强制更新（`minSupportedVersionCode`），强制时仅可退出应用
+- 设置页显示当前版本号（versionName + versionCode）
+
+### 变更
+
+- `versionName` 1.0.2，`versionCode` 4（与 1.0.x 同签名，可直接覆盖安装）
+- 新增 `INTERNET`、`REQUEST_INSTALL_PACKAGES` 权限；仅对 `127.0.0.1/localhost` 放开明文 HTTP，其余域名强制 HTTPS
+
+### 验证
+
+- 真机端到端验证：检查更新弹窗 → 下载 → SHA-256 校验 → 系统安装器 → 安装成功
+- 首次安装会引导开启「安装未知应用」，授权后重试即可完成更新
+
 ## [1.0.1] - 2026-11-21
 
 ### 优化
@@ -76,3 +98,4 @@ Release 产物：`YOLO11-dual-mode-v1.0.0-release.apk`
 
 [1.0.0]: https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.0.0
 [1.0.1]: https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.0.1
+[1.0.2]: https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.0.2

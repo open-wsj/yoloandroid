@@ -3,7 +3,7 @@
 基于 [ncnn](https://github.com/Tencent/ncnn) 的 Android 端 YOLO11 实时目标检测 / 图像分类应用，纯 CPU 推理（arm64-v8a），支持「检测」与「分类」两种工作模式。
 
 - 仓库地址：https://gitee.com/open-zynq/yoloandroid
-- 当前版本：**v1.0.1**（versionCode 3）
+- 当前版本：**v1.0.2**（versionCode 4）
 
 ## 功能特性
 
@@ -15,6 +15,7 @@
 | 分类 | 摄像头拍照后即时分类 |
 | 设置 | 检测/分类模式互斥切换 |
 | 设置 | 自动枚举设备全部逻辑摄像头（前置/后置等），切换后自动重连并刷新预览 |
+| 更新 | 冷启动自动检查 + 设置页手动检查，应用内下载、SHA-256 校验、系统安装器安装 |
 
 ## 环境依赖
 
@@ -68,6 +69,7 @@ android_ncnn/
 │       │   ├── SettingsActivity.java # 设置页：模式选择、摄像头枚举
 │       │   ├── Yolo11Detector.java   # 检测 JNI 封装
 │       │   ├── Classifier.java       # 分类 JNI 封装
+│       │   ├── UpdateManager.java    # 检查更新、下载、SHA-256 校验、安装
 │       │   ├── OverlayView.java      # 检测框与标签绘制（含避让逻辑）
 │       │   └── AppPrefs.java         # 模式/摄像头持久化
 │       └── res/                      # 布局、字符串、自适应图标
@@ -77,6 +79,7 @@ android_ncnn/
 ├── build.gradle.kts / settings.gradle.kts
 ├── gradle.properties                 # JVM 参数、JDK 路径、中文路径放行
 ├── .gitignore
+├── update.json                       # 更新清单（客户端检查更新时拉取）
 ├── CHANGELOG.md
 └── README.md
 ```
@@ -200,6 +203,33 @@ ultralytics 导出的 ncnn 模型是 fp32，体积大（yolo11m 检测 76.7MB、
 
 > 当前 v1.0.1 内置的即 fp16 模型：检测 38.5MB + 分类 22.2MB，Release APK 约 63.5MB。
 > 可用 Python ncnn 对比 fp32/fp16 输出验证精度（实测 bus.jpg：检测 bus 0.9316 → 0.9317，分类 Top-5 完全一致）。
+
+## 应用内更新（发布方操作）
+
+客户端冷启动会请求仓库根目录的 [`update.json`](update.json)（6 小时节流），设置页也可手动检查。
+
+### 字段说明
+
+| 字段 | 说明 |
+| --- | --- |
+| `latestVersionCode` | 最新版本号，必须大于客户端 `versionCode` 才会提示 |
+| `latestVersionName` | 展示用版本名，如 `1.0.3` |
+| `minSupportedVersionCode` | 低于该版本强制更新（只保留「退出应用」） |
+| `apkUrl` | APK 直链，建议放 Gitee Release 附件 |
+| `sha256` | APK 的 SHA-256（小写），下载后校验 |
+| `sizeBytes` | 安装包字节数，用于展示大小 |
+| `changelog` | 更新说明，支持 `\n` 换行 |
+
+### 发版步骤
+
+1. 修改 `app/build.gradle.kts` 的 `versionCode` / `versionName`，构建 `assembleRelease`；
+2. 计算校验值：`(Get-FileHash app\build\outputs\apk\release\app-release.apk -Algorithm SHA256).Hash.ToLower()`；
+3. 在 Gitee 创建对应 tag 的 Release，上传 APK，附件名与 `apkUrl` 最后一段保持一致；
+4. 更新 `update.json` 的版本号、URL、`sha256` 与日志后提交推送 `main`；
+5. 老版本客户端下次检查即可收到更新。
+
+> 升级安装要求 **同签名**，请务必保管好 `keystore/release.jks`。
+> 下载在应用内进行，下载期间建议保持应用前台；首次更新会引导开启「安装未知应用」。
 
 ## 正式版打包与签名
 
@@ -325,6 +355,22 @@ v1.0.1 起模型已做 fp16 量化：`yolo11m.ncnn.bin` 38.5MB、`yolo11m-cls.nc
 
 ncnn `20261020-android-vulkan` 在 Adreno 740 上输出异常，降回 `20250503` 可修复；当前版本已改为纯 CPU，不再涉及该问题。
 
+### 应用内更新
+
+**19. 检查更新提示失败**
+
+- 确认 `INTERNET` 权限存在；
+- 部分网络/DNS 会劫持 `gitee.com`，导致拉取 `update.json` 失败；可切换网络或使用手机流量重试；
+- 本地联调时如需明文 HTTP，仅 `127.0.0.1`/`localhost` 被允许（见 `res/xml/network_security_config.xml`），正式环境必须 HTTPS。
+
+**20. 下载完成后没有弹出安装器**
+
+第一次更新需要「允许安装未知应用」：应用会自动跳到该设置页，打开开关后返回并重新点「立即更新」即可。
+
+**21. 安装失败 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`**
+
+新包与已安装包签名不一致。更新包必须用同一份 `release.jks` 签名；换了证书只能卸载重装。
+
 ## 已知限制
 
 - 仅支持 `arm64-v8a`，未打包 32 位与 x86 ABI
@@ -332,6 +378,7 @@ ncnn `20261020-android-vulkan` 在 Adreno 740 上输出异常，降回 `20250503
 - 视频检测为抽帧离线处理（300ms/帧），并非实时逐帧播放
 - 分类模型为 ImageNet 1000 类，不支持自定义类别（需自行导出并替换标签）
 - 应用为单 Activity 竖屏布局，未适配平板横屏
+- 应用内下载依赖应用进程存活，下载期间建议保持前台
 
 ## 版本与更新日志
 
