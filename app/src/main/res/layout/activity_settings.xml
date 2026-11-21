@@ -73,11 +73,26 @@
             android:textColor="#888888"
             android:textSize="12sp" />
 
+        <TextView
+            android:id="@+id/settings_version"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/settings_check_update"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/settings_check_update" />
+
         <Button
             android:id="@+id/settings_done"
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="12dp"
             android:text="@string/settings_done" />
     </LinearLayout>
 </ScrollView>

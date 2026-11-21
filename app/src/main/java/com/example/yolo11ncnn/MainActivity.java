@@ -1,7 +1,11 @@
 package com.example.yolo11ncnn;
 
 import android.Manifest;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -113,6 +117,17 @@ public class MainActivity extends ComponentActivity {
                 }
             });
 
+    private final BroadcastReceiver downloadReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            if (id > 0) {
+                UpdateManager.handleDownload(MainActivity.this, id);
+            }
+        }
+    };
+    private boolean downloadReceiverRegistered = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -133,6 +148,9 @@ public class MainActivity extends ComponentActivity {
 
         applyInsets();
         trackHudBoundsForOverlay();
+        registerDownloadReceiver();
+        UpdateManager.handleDownload(this, -1);
+        checkForUpdatesSilently();
 
         findViewById(R.id.settings_button).setOnClickListener(v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
@@ -167,6 +185,10 @@ public class MainActivity extends ComponentActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (downloadReceiverRegistered) {
+            unregisterReceiver(downloadReceiver);
+            downloadReceiverRegistered = false;
+        }
         Thread thread = videoThread;
         videoActive = false;
         videoPaused = false;
@@ -198,6 +220,26 @@ public class MainActivity extends ComponentActivity {
             }
             classifierReady = false;
         }
+    }
+
+    // ---------------- 应用更新 ----------------
+
+    private void registerDownloadReceiver() {
+        if (downloadReceiverRegistered) {
+            return;
+        }
+        ContextCompat.registerReceiver(this, downloadReceiver,
+                new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                ContextCompat.RECEIVER_EXPORTED);
+        downloadReceiverRegistered = true;
+    }
+
+    private void checkForUpdatesSilently() {
+        UpdateManager.check(this, false, (info, error) -> {
+            if (error == null && UpdateManager.hasUpdate(this, info)) {
+                UpdateManager.showUpdateDialog(this, info);
+            }
+        });
     }
 
     // ---------------- 模式与相机 ----------------

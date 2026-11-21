@@ -6,6 +6,8 @@ import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.RadioButton;
 import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.ComponentActivity;
 import androidx.core.graphics.Insets;
@@ -53,6 +55,25 @@ public class SettingsActivity extends ComponentActivity {
         });
 
         findViewById(R.id.settings_done).setOnClickListener(v -> finish());
+
+        TextView versionText = findViewById(R.id.settings_version);
+        versionText.setText(String.format(java.util.Locale.US,
+                "当前版本 %s (versionCode %d)",
+                UpdateManager.currentVersionName(this),
+                UpdateManager.currentVersionCode(this)));
+
+        findViewById(R.id.settings_check_update).setOnClickListener(v -> {
+            Toast.makeText(this, "正在检查更新…", Toast.LENGTH_SHORT).show();
+            UpdateManager.check(this, true, (info, error) -> {
+                if (error != null) {
+                    Toast.makeText(this, "检查失败：" + error, Toast.LENGTH_LONG).show();
+                } else if (!UpdateManager.hasUpdate(this, info)) {
+                    Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
+                } else {
+                    UpdateManager.showUpdateDialog(this, info);
+                }
+            });
+        });
     }
 
     private void populateCameras(Spinner spinner) {

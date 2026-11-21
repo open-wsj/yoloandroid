@@ -11,6 +11,7 @@
     <string name="settings_camera_title">采集摄像头</string>
     <string name="settings_camera_hint">自动枚举设备上的所有摄像头；切换后返回主界面会自动重连并刷新预览</string>
     <string name="settings_done">完成</string>
+    <string name="settings_check_update">检查更新</string>
 
     <string name="media_preview_desc">媒体预览</string>
     <string name="btn_pick_video">导入视频</string>
