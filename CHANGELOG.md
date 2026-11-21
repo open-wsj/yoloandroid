@@ -2,6 +2,21 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-11-21
+
+### 优化
+
+- 检测与分类模型改为 ncnn **fp16 存储**（`ncnnoptimize ... 1`）：
+  - 检测模型 `yolo11m.ncnn.bin`：76.7MB → **38.5MB**
+  - 分类模型 `yolo11m-cls.ncnn.bin`：44.3MB → **22.2MB**
+- Release APK 体积：112.9MB → **63.5MB**，满足 Gitee 附件 100MB 限制
+- 精度影响可忽略（Python ncnn 对比：bus 检测 0.9316 → 0.9317，分类 Top-5 完全一致）
+- 真机验证：Release 包实时检测 5 个目标正常，拍照分类 46ms
+
+### 变更
+
+- `versionName` 1.0.1，`versionCode` 3（与 1.0.0 同签名，可直接覆盖安装）
+
 ## [1.0.0] - 2026-11-21
 
 首个正式版本。
@@ -60,3 +75,4 @@
 Release 产物：`YOLO11-dual-mode-v1.0.0-release.apk`
 
 [1.0.0]: https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.0.0
+[1.0.1]: https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.0.1

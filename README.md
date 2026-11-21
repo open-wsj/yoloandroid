@@ -3,7 +3,7 @@
 基于 [ncnn](https://github.com/Tencent/ncnn) 的 Android 端 YOLO11 实时目标检测 / 图像分类应用，纯 CPU 推理（arm64-v8a），支持「检测」与「分类」两种工作模式。
 
 - 仓库地址：https://gitee.com/open-zynq/yoloandroid
-- 当前版本：**v1.0.0**（versionCode 2）
+- 当前版本：**v1.0.1**（versionCode 3）
 
 ## 功能特性
 
@@ -185,6 +185,22 @@ uv pip install --python .venv-model\Scripts\python.exe ultralytics pnnx
 
 > 检测模型输出固定为 `(84, 8400)`（4 个框参数 + 80 类分数）；分类输出 1000 维且模型末尾已带 Softmax，解码代码无需修改。
 
+### 5. 模型量化（fp16，强烈建议）
+
+ultralytics 导出的 ncnn 模型是 fp32，体积大（yolo11m 检测 76.7MB、分类 44.3MB），会导致 APK 超过 100MB。用 ncnn 官方 `ncnnoptimize` 转成 fp16 存储即可减半，精度差异在 1e-4 量级。
+
+1. 从 [ncnn Releases](https://github.com/Tencent/ncnn/releases/tag/20250503) 下载 `ncnn-20250503-windows-vs2022.zip`（或对应版本）；
+2. 进入解压后的 `x64\bin`，执行（最后一个参数 `1` 表示 fp16）：
+
+```powershell
+.\ncnnoptimize.exe in.param in.bin out.param out.bin 1
+```
+
+3. 产物替换到 `app/src/main/assets/` 后重新打包即可。
+
+> 当前 v1.0.1 内置的即 fp16 模型：检测 38.5MB + 分类 22.2MB，Release APK 约 63.5MB。
+> 可用 Python ncnn 对比 fp32/fp16 输出验证精度（实测 bus.jpg：检测 bus 0.9316 → 0.9317，分类 Top-5 完全一致）。
+
 ## 正式版打包与签名
 
 ### 1. 生成签名证书（只需一次）
@@ -299,9 +315,9 @@ adb install app\build\outputs\apk\release\app-release.apk
 
 需在开发者选项中开启「USB 安装」，解锁屏幕后重试；也可先在手机上确认安装弹窗。
 
-**17. Gitee 提示有大于 50MB 的文件**
+**17. Gitee 提示文件超过 50MB / 附件不能超过 100MB**
 
-`yolo11m.ncnn.bin`（76.7MB）超过提示阈值但可正常推送。若需瘦身，可将模型迁移到 Git LFS 或发布到 Release 附件。
+v1.0.1 起模型已做 fp16 量化：`yolo11m.ncnn.bin` 38.5MB、`yolo11m-cls.ncnn.bin` 22.2MB，APK 约 63.5MB，均低于限制。若更换为更大的模型（如 yolo11l/x），请先按「模型量化（fp16）」一节处理。
 
 ### 历史问题（Vulkan 版本）
 
