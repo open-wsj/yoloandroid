@@ -1,17 +1,18 @@
-# YOLO11 Ncnn Android
+# YOLO26 Ncnn Android
 
-基于 [ncnn](https://github.com/Tencent/ncnn) 的 Android 端 YOLO11 实时目标检测 / 图像分类应用，纯 CPU 推理（arm64-v8a），支持「检测」与「分类」两种工作模式。
+基于 [ncnn](https://github.com/Tencent/ncnn) 的 Android 端 YOLO26 实时目标检测 / 图像分类应用，纯 CPU 推理（arm64-v8a），支持「检测」与「分类」两种工作模式。
 
 - 仓库地址：https://gitee.com/open-zynq/yoloandroid
-- 当前版本：**v1.0.2**（versionCode 4）
+- 发布页：https://gitee.com/open-zynq/yoloandroid/releases
+- 当前版本：**v1.1.0**（versionCode 5）
 
 ## 功能特性
 
 | 模式 | 功能 |
 | --- | --- |
-| 检测 | 摄像头实时检测（YOLO11m，80 类 COCO） |
+| 检测 | 摄像头实时检测（YOLO26m，80 类 COCO） |
 | 检测 | 相册导入视频，逐帧检测并叠加检测框，支持暂停/继续/停止 |
-| 分类 | 相册导入图片分类（YOLO11m-cls，ImageNet 1000 类，Top-5） |
+| 分类 | 相册导入图片分类（YOLO26m-cls，ImageNet 1000 类，Top-5） |
 | 分类 | 摄像头拍照后即时分类 |
 | 设置 | 检测/分类模式互斥切换 |
 | 设置 | 自动枚举设备全部逻辑摄像头（前置/后置等），切换后自动重连并刷新预览 |
@@ -157,7 +158,7 @@ adb shell am start -n com.example.yolo11ncnn/.MainActivity
 
 ## 模型导出与替换
 
-模型文件已随仓库提供，仅在需要更换模型（如 yolo11n / 自定义训练模型）时执行以下步骤。
+模型文件已随仓库提供，仅在需要更换模型（如 yolo26n / 自定义训练模型）时执行以下步骤。
 
 ### 1. 创建 Python 环境
 
@@ -262,12 +263,10 @@ keyPassword=<你的密码>
 | 任务 | 耗时 | 帧率 |
 | --- | --- | --- |
 | **YOLO26m 实时检测** | 367–378 ms/帧 | 2.9–3.0 FPS |
-| **YOLO26m-cls 图片分类** | 89 ms/次 | — |
-| YOLO11m 实时检测（历史） | 320–620 ms/帧 | 1.6–3.1 FPS |
-| YOLO11m-cls 图片分类（历史） | 41–59 ms/次 | — |
+| **YOLO26m-cls 图片分类** | 38–47 ms/次 | — |
 
 > 视频逐帧检测未在 YOLO26m 上复测，预计与实时检测同量级。
-> 纯 CPU 下模型越大越慢；若需要更高帧率，可换成 `yolo26n` / `yolo26s`，或重新引入 Vulkan GPU 路径（见 `dist/` 中的历史 GPU 版 APK）。
+> 纯 CPU 下模型越大越慢；若需要更高帧率，可换成 `yolo26n` / `yolo26s`。
 
 ## 常见问题排查
 
@@ -356,32 +355,26 @@ adb install app\build\outputs\apk\release\app-release.apk
 
 v1.1.0 起模型导出即 fp16：`yolo26m.ncnn.bin` 41.0MB、`yolo26m-cls.ncnn.bin` 23.3MB，APK 约 67MB，均低于限制。若更换为更大的模型（如 yolo26l/x），导出时同样加 `half=True`。
 
-### 历史问题（Vulkan 版本）
-
-**18. GPU 推理输出乱码（4e37 / inf）**
-
-ncnn `20261020-android-vulkan` 在 Adreno 740 上输出异常，降回 `20250503` 可修复；当前版本已改为纯 CPU，不再涉及该问题。
-
 ### 应用内更新
 
-**19. 检查更新提示失败**
+**18. 检查更新提示失败**
 
 - 确认 `INTERNET` 权限存在；
 - 部分网络/DNS 会劫持 `gitee.com`，导致拉取 `update.json` 失败；可切换网络或使用手机流量重试；
 - 本地联调时如需明文 HTTP，仅 `127.0.0.1`/`localhost` 被允许（见 `res/xml/network_security_config.xml`），正式环境必须 HTTPS。
 
-**20. 下载完成后没有弹出安装器**
+**19. 下载完成后没有弹出安装器**
 
 第一次更新需要「允许安装未知应用」：应用会自动跳到该设置页，打开开关后返回并重新点「立即更新」即可。
 
-**21. 安装失败 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`**
+**20. 安装失败 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`**
 
 新包与已安装包签名不一致。更新包必须用同一份 `release.jks` 签名；换了证书只能卸载重装。
 
 ## 已知限制
 
 - 仅支持 `arm64-v8a`，未打包 32 位与 x86 ABI
-- 纯 CPU 推理，YOLO11m 在手机上约 1.6–3.1 FPS
+- 纯 CPU 推理，YOLO26m 在手机上约 2.9–3.0 FPS
 - 视频检测为抽帧离线处理（300ms/帧），并非实时逐帧播放
 - 分类模型为 ImageNet 1000 类，不支持自定义类别（需自行导出并替换标签）
 - 应用为单 Activity 竖屏布局，未适配平板横屏

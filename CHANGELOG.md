@@ -16,8 +16,9 @@
 
 - Python ncnn 与 PyTorch 对比（bus.jpg）：检测 5 个目标类别/置信度一致，分类 Top-3 完全一致
 - Release APK 构建通过并覆盖安装成功，体积约 67MB
-- 真机（Xiaomi 13 / CPU 4 线程）验证：实时检测 367–378ms（约 2.9–3.0 FPS），前置摄像头人物 0.91–0.95；拍照分类 89ms 并正常显示 Top-5
+- 真机（Xiaomi 13 / CPU 4 线程）验证：实时检测 367–378ms（约 2.9–3.0 FPS），前置摄像头人物 0.91–0.95；拍照分类 38–47ms 并正常显示 Top-5
 - 视频逐帧检测未在 YOLO26m 上复测
+- 已发布 Gitee Release [v1.1.0](https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.1.0)，附带 APK 安装包
 
 ## [1.0.2] - 2026-11-21
 
