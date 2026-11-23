@@ -255,7 +255,7 @@ public class MainActivity extends ComponentActivity {
             ioExecutor.execute(() -> {
                 try {
                     Yolo11Detector loaded = new Yolo11Detector(getAssets(),
-                            "yolo11m.ncnn.param", "yolo11m.ncnn.bin", EMBEDDED_THREADS);
+                            "yolo26m.ncnn.param", "yolo26m.ncnn.bin", EMBEDDED_THREADS);
                     synchronized (modelLock) {
                         if (detector == null) {
                             detector = loaded;
@@ -288,7 +288,7 @@ public class MainActivity extends ComponentActivity {
             ioExecutor.execute(() -> {
                 try {
                     Classifier loaded = new Classifier(getAssets(),
-                            "yolo11m-cls.ncnn.param", "yolo11m-cls.ncnn.bin", EMBEDDED_THREADS);
+                            "yolo26m-cls.ncnn.param", "yolo26m-cls.ncnn.bin", EMBEDDED_THREADS);
                     synchronized (modelLock) {
                         if (classifier == null) {
                             classifier = loaded;

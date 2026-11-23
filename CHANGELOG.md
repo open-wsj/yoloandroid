@@ -2,6 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-11-23
+
+### 变更
+
+- 检测模型由 YOLO11m 升级为 **YOLO26m**（65.1M 参数，640 输入，COCO 80 类）
+- 分类模型由 YOLO11m-cls 升级为 **YOLO26m-cls**（224 输入，ImageNet 1000 类）
+- 两个模型均以 `half=True` 直接导出为 ncnn **fp16 存储**，无需再手工执行 `ncnnoptimize`
+- 检测输出结构仍为 `(84, 8400)`，原生解码与 NMS 代码无需修改
+- 应用名改为「YOLO26 Ncnn」，`versionName` 1.1.0，`versionCode` 5
+
+### 验证
+
+- Python ncnn 与 PyTorch 对比（bus.jpg）：检测 5 个目标类别/置信度一致，分类 Top-3 完全一致
+- Release APK 构建通过并覆盖安装成功，体积约 67MB
+- 真机（Xiaomi 13 / CPU 4 线程）验证：实时检测 367–378ms（约 2.9–3.0 FPS），前置摄像头人物 0.91–0.95；拍照分类 89ms 并正常显示 Top-5
+- 视频逐帧检测未在 YOLO26m 上复测
+
 ## [1.0.2] - 2026-11-21
 
 ### 新增

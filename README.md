@@ -55,8 +55,8 @@ android_ncnn/
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── assets/                   # 模型与标签（随 APK 打包）
-│       │   ├── yolo11m.ncnn.{param,bin}       # 检测模型（YOLO11m，80 类）
-│       │   ├── yolo11m-cls.ncnn.{param,bin}   # 分类模型（YOLO11m-cls，1000 类）
+│       │   ├── yolo26m.ncnn.{param,bin}       # 检测模型（YOLO26m，80 类）
+│       │   ├── yolo26m-cls.ncnn.{param,bin}   # 分类模型（YOLO26m-cls，1000 类）
 │       │   ├── labels.txt            # COCO 80 类标签
 │       │   └── imagenet_labels.txt   # ImageNet 1000 类标签
 │       ├── cpp/
@@ -170,39 +170,36 @@ uv pip install --python .venv-model\Scripts\python.exe ultralytics pnnx
 ### 2. 导出检测模型（640 输入）
 
 ```powershell
-.venv-model\Scripts\python.exe -c "from ultralytics import YOLO; YOLO('yolo11m.pt').export(format='ncnn', imgsz=640)"
+.venv-model\Scripts\python.exe -c "from ultralytics import YOLO; YOLO('yolo26m.pt').export(format='ncnn', imgsz=640, half=True)"
 ```
 
-产物在 `yolo11m_ncnn_model/model.ncnn.param` 与 `model.ncnn.bin`。
+产物在 `yolo26m_ncnn_model/model.ncnn.param` 与 `model.ncnn.bin`；`half=True` 直接导出 fp16 存储（约 39MB），无需再手工跑 `ncnnoptimize`。
 
 ### 3. 导出分类模型（224 输入，附标签）
 
 ```powershell
-.venv-model\Scripts\python.exe -c "from ultralytics import YOLO; m=YOLO('yolo11m-cls.pt'); open('imagenet_labels.txt','w',encoding='utf-8').write('\n'.join(str(v) for v in m.names.values())); m.export(format='ncnn', imgsz=224)"
+.venv-model\Scripts\python.exe -c "from ultralytics import YOLO; m=YOLO('yolo26m-cls.pt'); open('imagenet_labels.txt','w',encoding='utf-8').write('\n'.join(str(v) for v in m.names.values())); m.export(format='ncnn', imgsz=224, half=True)"
 ```
 
 ### 4. 替换到工程
 
-将 `model.ncnn.param/bin` 复制到 `app/src/main/assets/`，并按现有命名重命名（`yolo11m.ncnn.*` / `yolo11m-cls.ncnn.*`）。
+将 `model.ncnn.param/bin` 复制到 `app/src/main/assets/`，并按现有命名重命名（`yolo26m.ncnn.*` / `yolo26m-cls.ncnn.*`）。
 如果改了文件名，需要同步修改 [MainActivity.java](app/src/main/java/com/example/yolo11ncnn/MainActivity.java) 中的资源名。
 
 > 检测模型输出固定为 `(84, 8400)`（4 个框参数 + 80 类分数）；分类输出 1000 维且模型末尾已带 Softmax，解码代码无需修改。
 
 ### 5. 模型量化（fp16，强烈建议）
 
-ultralytics 导出的 ncnn 模型是 fp32，体积大（yolo11m 检测 76.7MB、分类 44.3MB），会导致 APK 超过 100MB。用 ncnn 官方 `ncnnoptimize` 转成 fp16 存储即可减半，精度差异在 1e-4 量级。
+ultralytics 导出的 ncnn 模型默认是 fp32，体积大（yolo26m 检测约 78MB、分类约 44MB），会导致 APK 超过 100MB。导出时加 `half=True` 即可得到 fp16 存储，体积减半，精度差异在 1e-3 量级。
 
-1. 从 [ncnn Releases](https://github.com/Tencent/ncnn/releases/tag/20250503) 下载 `ncnn-20250503-windows-vs2022.zip`（或对应版本）；
-2. 进入解压后的 `x64\bin`，执行（最后一个参数 `1` 表示 fp16）：
+若已有 fp32 模型，也可用 ncnn 官方 `ncnnoptimize` 转换（最后一个参数 `1` 表示 fp16）：
 
 ```powershell
 .\ncnnoptimize.exe in.param in.bin out.param out.bin 1
 ```
 
-3. 产物替换到 `app/src/main/assets/` 后重新打包即可。
-
-> 当前 v1.0.1 内置的即 fp16 模型：检测 38.5MB + 分类 22.2MB，Release APK 约 63.5MB。
-> 可用 Python ncnn 对比 fp32/fp16 输出验证精度（实测 bus.jpg：检测 bus 0.9316 → 0.9317，分类 Top-5 完全一致）。
+> 当前 v1.1.0 内置 fp16 模型：检测 41.0MB + 分类 23.3MB，Release APK 约 67MB。
+> 已用 Python ncnn 与 PyTorch 对比验证（bus.jpg：检测 5 个目标类别/置信度一致，分类 Top-3 完全一致）。
 
 ## 应用内更新（发布方操作）
 
@@ -264,11 +261,13 @@ keyPassword=<你的密码>
 
 | 任务 | 耗时 | 帧率 |
 | --- | --- | --- |
-| YOLO11m 实时检测 | 320–620 ms/帧 | 1.6–3.1 FPS |
-| YOLO11m 视频逐帧检测 | 430–460 ms/帧 | 约 2 FPS |
-| YOLO11m-cls 图片分类 | 41–59 ms/次 | — |
+| **YOLO26m 实时检测** | 367–378 ms/帧 | 2.9–3.0 FPS |
+| **YOLO26m-cls 图片分类** | 89 ms/次 | — |
+| YOLO11m 实时检测（历史） | 320–620 ms/帧 | 1.6–3.1 FPS |
+| YOLO11m-cls 图片分类（历史） | 41–59 ms/次 | — |
 
-> 纯 CPU 下模型越大越慢；若需要更高帧率，可换回 yolo11n（约 10–12 FPS），或重新引入 Vulkan GPU 路径（见 `dist/` 中的历史 GPU 版 APK）。
+> 视频逐帧检测未在 YOLO26m 上复测，预计与实时检测同量级。
+> 纯 CPU 下模型越大越慢；若需要更高帧率，可换成 `yolo26n` / `yolo26s`，或重新引入 Vulkan GPU 路径（见 `dist/` 中的历史 GPU 版 APK）。
 
 ## 常见问题排查
 
@@ -316,9 +315,17 @@ NDK 28 的 libomp 在 Android 12+ 上会因 `sched_getaffinity` 失败中止，�
 
 `OverlayView` 已实现边界裁剪与标签互斥下移；若修改布局后复现，检查 `hudBounds` 是否同步、以及 `RectF.intersects` 避让逻辑是否被移除。
 
-**11. 拍照分类结果离谱、图片横躺**
+**11. 拍照分类结果离谱 / 图片横躺 / 一拍照就闪退**
 
-`ImageProxy.toBitmap()` 不会应用旋转。必须读取 `image.getImageInfo().getRotationDegrees()` 旋转；相册图片需通过 `ExifInterface` 读取 `TAG_ORIENTATION`。
+分类链路有三处容易踩的坑（v1.1.0 已修）：
+
+1. **裁剪后必须带 stride 读取**：中心裁正方形后，`from_pixels_resize` 要传 `stride = img_w * 4`，否则会把整张图按新行宽错位重采样。
+2. **输入只需 `1/255`**：Ultralytics 分类预处理（`classify_transforms`）只做 ToTensor，**不要**减 ImageNet mean/std，加了会全错。
+3. **输出是单通道 `w=num_class`**：按连续内存读，不能按 `channel(i)` 逐通道读，否则越界闪退（`SIGSEGV, SEGV_ACCERR`，栈在 `YoloCls::classify`）。
+
+另外，ImageNet-1k **没有 `person` 类**，对人脸特写/逆光场景给出的多是 `dishwasher`、`sweatshirt` 之类的低置信度结果，这是模型本身的能力边界，不是推理错误。判断"画面里有没有人"请用检测模式。
+
+图片横躺：`ImageProxy.toBitmap()` 不会应用旋转，必须读取 `image.getImageInfo().getRotationDegrees()` 旋转；相册图片需通过 `ExifInterface` 读取 `TAG_ORIENTATION`。
 
 **12. 相册/视频无法选择或提示无权限**
 
@@ -347,7 +354,7 @@ adb install app\build\outputs\apk\release\app-release.apk
 
 **17. Gitee 提示文件超过 50MB / 附件不能超过 100MB**
 
-v1.0.1 起模型已做 fp16 量化：`yolo11m.ncnn.bin` 38.5MB、`yolo11m-cls.ncnn.bin` 22.2MB，APK 约 63.5MB，均低于限制。若更换为更大的模型（如 yolo11l/x），请先按「模型量化（fp16）」一节处理。
+v1.1.0 起模型导出即 fp16：`yolo26m.ncnn.bin` 41.0MB、`yolo26m-cls.ncnn.bin` 23.3MB，APK 约 67MB，均低于限制。若更换为更大的模型（如 yolo26l/x），导出时同样加 `half=True`。
 
 ### 历史问题（Vulkan 版本）
 

@@ -1,9 +1,9 @@
 {
-  "latestVersionCode": 4,
-  "latestVersionName": "1.0.2",
+  "latestVersionCode": 5,
+  "latestVersionName": "1.1.0",
   "minSupportedVersionCode": 2,
-  "apkUrl": "https://gitee.com/open-zynq/yoloandroid/releases/download/v1.0.2/YOLO11-dual-mode-v1.0.2-release.apk",
-  "sha256": "e3c78bd6ecae3968d7a10f3002897a47655b09348e6c1478a0367ece9b69323f",
-  "sizeBytes": 66587016,
-  "changelog": "1. 新增应用内更新：冷启动自动检查、应用内下载、SHA-256 校验\n2. 设置页新增当前版本显示与「检查更新」入口\n3. 支持可选更新与强制更新（minSupportedVersionCode）两种策略"
+  "apkUrl": "https://gitee.com/open-zynq/yoloandroid/releases/download/v1.1.0/YOLO26-dual-mode-v1.1.0-release.apk",
+  "sha256": "a74589ff4b977d7c3c42472fe97887afabab3ec2e7195aecb08c7e4da9e584fe",
+  "sizeBytes": 67147540,
+  "changelog": "1. 检测模型升级为 YOLO26m（fp16，41.0MB）\n2. 分类模型升级为 YOLO26m-cls（fp16，23.3MB）\n3. 修复分类推理：中心裁剪 stride 错位、分类输出读取越界导致的闪退\n4. 分类输入归一化修正为 [0,1]，结果与 PyTorch 一致\n5. 应用名改为「YOLO26 Ncnn」"
 }

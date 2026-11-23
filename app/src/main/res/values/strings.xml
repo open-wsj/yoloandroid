@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">YOLO11 Ncnn</string>
+    <string name="app_name">YOLO26 Ncnn</string>
     <string name="camera_permission_denied">需要相机权限才能运行检测</string>
     <string name="status_loading">正在加载模型…</string>
 

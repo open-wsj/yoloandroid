@@ -42,8 +42,11 @@ int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
     const unsigned char* crop = rgba + ((size_t) crop_y * img_w + crop_x) * 4;
 
     ncnn::Mat in = ncnn::Mat::from_pixels_resize(
-            crop, ncnn::Mat::PIXEL_RGBA2RGB, side, side, input_size_, input_size_);
+            crop, ncnn::Mat::PIXEL_RGBA2RGB, side, side, img_w * 4,
+            input_size_, input_size_);
 
+    // Ultralytics 分类推理的输入为 [0, 1]（classify_transforms 只做 ToTensor），
+    // 不需要 ImageNet mean/std，多了反而会全错。
     const float norm_vals[3] = {1.f / 255.f, 1.f / 255.f, 1.f / 255.f};
     in.substract_mean_normalize(0, norm_vals);
 
@@ -61,19 +64,29 @@ int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
     if (out.empty())
         return -3;
 
-    // 导出的模型末尾已带 Softmax，out 即各类别概率
+    // 导出的模型末尾已带 Softmax，out 即各类别概率。
+    // 输出可能为单通道 (num_class, 1, 1)，也可能为多 channel (1, 1, num_class)，
+    // 多 channel 时每通道有对齐填充，必须逐通道读取。
     const int n = out.w * out.h * out.c;
     if (n <= 0)
         return -4;
 
-    const float* scores = out.channel(0);
+    std::vector<float> scores(n);
+    if (out.c > 1 && out.w * out.h == 1) {
+        for (int i = 0; i < n; i++)
+            scores[i] = out.channel(i)[0];
+    } else {
+        const float* src = out.channel(0);
+        std::copy(src, src + n, scores.begin());
+    }
+
     std::vector<int> order(n);
     for (int i = 0; i < n; i++)
         order[i] = i;
 
     const int k = std::min(topk, n);
     std::partial_sort(order.begin(), order.begin() + k, order.end(),
-                      [scores](int a, int b) { return scores[a] > scores[b]; });
+                      [&scores](int a, int b) { return scores[a] > scores[b]; });
 
     results.reserve(k);
     for (int i = 0; i < k; i++)
