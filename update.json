@@ -1,9 +1,9 @@
 {
-  "latestVersionCode": 5,
-  "latestVersionName": "1.1.0",
+  "latestVersionCode": 6,
+  "latestVersionName": "1.2.0",
   "minSupportedVersionCode": 2,
-  "apkUrl": "https://gitee.com/open-zynq/yoloandroid/releases/download/v1.1.0/YOLO26-dual-mode-v1.1.0-release.apk",
-  "sha256": "a74589ff4b977d7c3c42472fe97887afabab3ec2e7195aecb08c7e4da9e584fe",
-  "sizeBytes": 67147540,
-  "changelog": "1. 检测模型升级为 YOLO26m（fp16，41.0MB）\n2. 分类模型升级为 YOLO26m-cls（fp16，23.3MB）\n3. 修复分类推理：中心裁剪 stride 错位、分类输出读取越界导致的闪退\n4. 分类输入归一化修正为 [0,1]，结果与 PyTorch 一致\n5. 应用名改为「YOLO26 Ncnn」"
+  "apkUrl": "https://gitee.com/open-zynq/yoloandroid/releases/download/v1.2.0/YOLO26-dual-mode-v1.2.0-release.apk",
+  "sha256": "5a34c0dd7713025ae5e1bc59aac4b12520491ad96db6dae531d99c627fa4f419",
+  "sizeBytes": 67157732,
+  "changelog": "1. 新增自定义模型导入：支持 .yolozip 模型包（manifest + param + bin + labels）\n2. 检测/分类的输入尺寸、类别数、预处理与阈值由 manifest 驱动\n3. 设置页新增模型管理：导入检测/分类模型、查看当前模型、恢复内置\n4. 导入校验 zip 安全、标签数量、param 魔数，失败不影响当前模型\n5. 新增模型打包工具 https://gitee.com/open-zynq/yolo-model-toolkit"
 }

@@ -24,6 +24,7 @@
 
 - 仅支持 ncnn 格式的 YOLO 检测/分类模型，检测暂不支持端到端（300×6）输出
 - 仅 arm64-v8a，模型算子需被 ncnn 20250503 支持
+- 已发布 Gitee Release [v1.2.0](https://gitee.com/open-zynq/yoloandroid/releases/tag/v1.2.0)，附带 APK 安装包
 
 ## [1.1.0] - 2026-11-23
 
