@@ -2,6 +2,29 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-11-24
+
+### 新增
+
+- **自定义模型导入**
+  - 支持导入 `.yolozip` 模型包（manifest.json + param + bin + labels）
+  - 设置页「模型管理」：导入检测/分类模型、查看当前模型、一键恢复内置模型
+  - 导入时校验 zip 路径安全、体积上限、manifest、标签行数、param 魔数，失败不影响当前模型
+  - 检测/分类的输入尺寸、类别数、预处理（scale/mean/std）、letterbox 填充值、阈值均由 manifest 驱动
+  - 分类支持可选 Softmax 后处理（`applySoftmax`）
+  - 新增 `tools/pack_model.py` 打包脚本，自动生成 manifest 并做基础校验
+- 原生层新增按文件路径加载模型，支持运行时输出结构自检（属性维度/类别数不符会拒绝）
+
+### 变更
+
+- `versionName` 1.2.0，`versionCode` 6
+- 导入模型存放在应用私有外部目录 `models/`，卸载应用时一并清理
+
+### 已知边界
+
+- 仅支持 ncnn 格式的 YOLO 检测/分类模型，检测暂不支持端到端（300×6）输出
+- 仅 arm64-v8a，模型算子需被 ncnn 20250503 支持
+
 ## [1.1.0] - 2026-11-23
 
 ### 变更

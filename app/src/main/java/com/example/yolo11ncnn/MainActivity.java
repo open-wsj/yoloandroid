@@ -41,6 +41,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import java.io.File;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -51,8 +52,6 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends ComponentActivity {
 
-    private static final float PROB_THRESHOLD = 0.25f;
-    private static final float NMS_THRESHOLD = 0.45f;
     private static final int EMBEDDED_THREADS = 4;
     private static final int VIDEO_FRAME_STEP_MS = 300;
 
@@ -83,6 +82,10 @@ public class MainActivity extends ComponentActivity {
 
     private String appliedMode;
     private String appliedCameraId;
+    private String appliedDetectKey = "";
+    private String appliedClassifyKey = "";
+    private String loadedDetectKey = "";
+    private String loadedClassifyKey = "";
     private float smoothedFps = 0f;
 
     private volatile boolean videoActive = false;
@@ -216,11 +219,19 @@ public class MainActivity extends ComponentActivity {
     private void applyMode() {
         String mode = AppPrefs.mode(this);
         String cameraId = AppPrefs.cameraId(this);
-        if (mode.equals(appliedMode) && cameraId.equals(appliedCameraId)) {
+        String detectKey = ModelManager.activeKey(this, ModelSpec.TASK_DETECT);
+        String classifyKey = ModelManager.activeKey(this, ModelSpec.TASK_CLASSIFY);
+
+        boolean modeChanged = !mode.equals(appliedMode) || !cameraId.equals(appliedCameraId);
+        boolean modelChanged = !detectKey.equals(appliedDetectKey)
+                || !classifyKey.equals(appliedClassifyKey);
+        if (!modeChanged && !modelChanged) {
             return;
         }
         appliedMode = mode;
         appliedCameraId = cameraId;
+        appliedDetectKey = detectKey;
+        appliedClassifyKey = classifyKey;
 
         stopVideoPlayback(true);
 
@@ -235,7 +246,7 @@ public class MainActivity extends ComponentActivity {
 
         ensureModel(detect);
 
-        if (hasCameraPermission()) {
+        if (hasCameraPermission() && modeChanged) {
             startCamera(detect);
         }
         statusText.setText(detect ? "检测  CPU×" + EMBEDDED_THREADS : "分类  CPU×" + EMBEDDED_THREADS);
@@ -247,24 +258,40 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void ensureModel(boolean detect) {
+        String key = ModelManager.activeKey(this,
+                detect ? ModelSpec.TASK_DETECT : ModelSpec.TASK_CLASSIFY);
         if (detect) {
-            if (detector != null) {
+            if (detector != null && key.equals(loadedDetectKey)) {
                 return;
             }
+            detectorReady = false;
             statusText.setText("检测模型加载中…");
-            ioExecutor.execute(() -> {
+            // 与 analyze 串行，避免关闭仍在推理中的模型
+            analysisExecutor.execute(() -> {
+                // 等待在途视频检测结束，避免关闭正在使用的模型
+                Thread thread = videoThread;
+                if (thread != null) {
+                    try {
+                        thread.join(800);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                synchronized (modelLock) {
+                    if (detector != null) {
+                        detector.close();
+                        detector = null;
+                    }
+                }
                 try {
-                    Yolo11Detector loaded = new Yolo11Detector(getAssets(),
-                            "yolo26m.ncnn.param", "yolo26m.ncnn.bin", EMBEDDED_THREADS);
+                    File dir = ModelManager.activeDir(MainActivity.this, ModelSpec.TASK_DETECT);
+                    Yolo11Detector loaded = dir == null
+                            ? new Yolo11Detector(getAssets(), ModelSpec.builtinDetect(), EMBEDDED_THREADS)
+                            : new Yolo11Detector(dir, ModelManager.loadSpec(dir), EMBEDDED_THREADS);
                     synchronized (modelLock) {
-                        if (detector == null) {
-                            detector = loaded;
-                            loaded = null;
-                        }
+                        detector = loaded;
                     }
-                    if (loaded != null) {
-                        loaded.close();
-                    }
+                    loadedDetectKey = key;
                     detectorReady = true;
                     runOnUiThread(() -> {
                         synchronized (modelLock) {
@@ -281,23 +308,27 @@ public class MainActivity extends ComponentActivity {
                 }
             });
         } else {
-            if (classifier != null) {
+            if (classifier != null && key.equals(loadedClassifyKey)) {
                 return;
             }
+            classifierReady = false;
             statusText.setText("分类模型加载中…");
             ioExecutor.execute(() -> {
+                synchronized (modelLock) {
+                    if (classifier != null) {
+                        classifier.close();
+                        classifier = null;
+                    }
+                }
                 try {
-                    Classifier loaded = new Classifier(getAssets(),
-                            "yolo26m-cls.ncnn.param", "yolo26m-cls.ncnn.bin", EMBEDDED_THREADS);
+                    File dir = ModelManager.activeDir(MainActivity.this, ModelSpec.TASK_CLASSIFY);
+                    Classifier loaded = dir == null
+                            ? new Classifier(getAssets(), ModelSpec.builtinClassify(), EMBEDDED_THREADS)
+                            : new Classifier(dir, ModelManager.loadSpec(dir), EMBEDDED_THREADS);
                     synchronized (modelLock) {
-                        if (classifier == null) {
-                            classifier = loaded;
-                            loaded = null;
-                        }
+                        classifier = loaded;
                     }
-                    if (loaded != null) {
-                        loaded.close();
-                    }
+                    loadedClassifyKey = key;
                     classifierReady = true;
                     runOnUiThread(() -> {
                         if (!isDetectMode()) {
@@ -426,7 +457,7 @@ public class MainActivity extends ComponentActivity {
             }
 
             long start = SystemClock.elapsedRealtime();
-            float[] detections = current.detect(rgba, width, height, PROB_THRESHOLD, NMS_THRESHOLD);
+            float[] detections = current.detect(rgba, width, height, -1f, -1f);
             long costMs = SystemClock.elapsedRealtime() - start;
 
             float instantFps = costMs > 0 ? 1000f / costMs : 0f;
@@ -515,8 +546,7 @@ public class MainActivity extends ComponentActivity {
                 }
 
                 long start = SystemClock.elapsedRealtime();
-                float[] detections = current.detect(rgba, width, height,
-                        PROB_THRESHOLD, NMS_THRESHOLD);
+                float[] detections = current.detect(rgba, width, height, -1f, -1f);
                 lastCostMs = SystemClock.elapsedRealtime() - start;
 
                 final long shownPosition = position;
@@ -659,7 +689,7 @@ public class MainActivity extends ComponentActivity {
 
         ioExecutor.execute(() -> {
             long start = SystemClock.elapsedRealtime();
-            float[] results = current.classify(rgba, width, height, 5);
+            float[] results = current.classify(rgba, width, height, current.topk());
             long costMs = SystemClock.elapsedRealtime() - start;
 
             StringBuilder builder = new StringBuilder();

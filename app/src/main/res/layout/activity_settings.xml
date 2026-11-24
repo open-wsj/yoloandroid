@@ -74,6 +74,51 @@
             android:textSize="12sp" />
 
         <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/settings_model_title"
+            android:textColor="#BBBBBB"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/model_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="#DDDDDD"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btn_import_detect"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_import_detect" />
+
+        <Button
+            android:id="@+id/btn_import_classify"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_import_classify" />
+
+        <Button
+            android:id="@+id/btn_reset_models"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_reset_models" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_model_note"
+            android:textColor="#888888"
+            android:textSize="12sp" />
+
+        <TextView
             android:id="@+id/settings_version"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

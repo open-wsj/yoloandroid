@@ -74,15 +74,37 @@ void Yolo::nms_sorted_bboxes(const std::vector<Object>& objects,
     }
 }
 
+int Yolo::applyConfig(int num_threads, const YoloConfig& config) {
+    config_ = config;
+    if (config_.input_w <= 0 || config_.input_h <= 0) {
+        config_.input_w = 640;
+        config_.input_h = 640;
+    }
+    if (config_.num_class <= 0) {
+        config_.num_class = 80;
+    }
+    if (config_.scale <= 0.f) {
+        config_.scale = 1.f / 255.f;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (config_.std[i] <= 0.f) {
+            config_.std[i] = 1.f;
+        }
+    }
+
+    net_.opt.use_vulkan_compute = false;
+    net_.opt.num_threads = num_threads > 0 ? num_threads : 4;
+    return 0;
+}
+
 int Yolo::load(AAssetManager* mgr, const char* param_name, const char* bin_name,
-               int num_threads) {
+               int num_threads, const YoloConfig& config) {
     if (!mgr) {
         fprintf(stderr, "asset manager is null\n");
         return -1;
     }
 
-    net_.opt.use_vulkan_compute = false;
-    net_.opt.num_threads = num_threads > 0 ? num_threads : 4;
+    applyConfig(num_threads, config);
 
     int ret = net_.load_param(mgr, param_name);
     if (ret != 0) {
@@ -100,31 +122,67 @@ int Yolo::load(AAssetManager* mgr, const char* param_name, const char* bin_name,
     return 0;
 }
 
+int Yolo::loadFromFile(const char* param_path, const char* bin_path,
+                       int num_threads, const YoloConfig& config) {
+    if (!param_path || !bin_path) {
+        return -1;
+    }
+
+    applyConfig(num_threads, config);
+
+    int ret = net_.load_param(param_path);
+    if (ret != 0) {
+        fprintf(stderr, "load_param failed: %s\n", param_path);
+        return ret;
+    }
+
+    ret = net_.load_model(bin_path);
+    if (ret != 0) {
+        fprintf(stderr, "load_model failed: %s\n", bin_path);
+        return ret;
+    }
+
+    ready_ = true;
+    return 0;
+}
+
 int Yolo::detect(const unsigned char* rgba, int img_w, int img_h,
                  std::vector<Object>& objects, float prob_threshold, float nms_threshold) {
     objects.clear();
     if (!ready_ || !rgba || img_w <= 0 || img_h <= 0)
         return -1;
 
-    const int target = input_size_;
+    if (prob_threshold < 0.f)
+        prob_threshold = config_.prob_threshold;
+    if (nms_threshold < 0.f)
+        nms_threshold = config_.nms_threshold;
 
-    // letterbox：保持宽高比，空白处填充 114
-    float scale = std::min((float) target / img_w, (float) target / img_h);
+    const int target_w = config_.input_w;
+    const int target_h = config_.input_h;
+
+    // letterbox：保持宽高比，空白处填充 pad_value
+    float scale = std::min((float) target_w / img_w, (float) target_h / img_h);
     int resized_w = (int) (img_w * scale + 0.5f);
     int resized_h = (int) (img_h * scale + 0.5f);
-    int pad_x = (target - resized_w) / 2;
-    int pad_y = (target - resized_h) / 2;
+    int pad_x = (target_w - resized_w) / 2;
+    int pad_y = (target_h - resized_h) / 2;
 
     ncnn::Mat resized = ncnn::Mat::from_pixels_resize(
             rgba, ncnn::Mat::PIXEL_RGBA2RGB, img_w, img_h, resized_w, resized_h);
 
     ncnn::Mat in;
-    ncnn::copy_make_border(resized, in, pad_y, target - resized_h - pad_y,
-                           pad_x, target - resized_w - pad_x,
-                           ncnn::BORDER_CONSTANT, 114.f);
+    ncnn::copy_make_border(resized, in, pad_y, target_h - resized_h - pad_y,
+                           pad_x, target_w - resized_w - pad_x,
+                           ncnn::BORDER_CONSTANT, config_.pad_value);
 
-    const float norm_vals[3] = {1.f / 255.f, 1.f / 255.f, 1.f / 255.f};
-    in.substract_mean_normalize(0, norm_vals);
+    // (v * scale - mean) / std，转换为 ncnn 的 (v - mean') * norm' 形式
+    float mean_vals[3];
+    float norm_vals[3];
+    for (int i = 0; i < 3; i++) {
+        mean_vals[i] = config_.mean[i] / config_.scale;
+        norm_vals[i] = config_.scale / config_.std[i];
+    }
+    in.substract_mean_normalize(mean_vals, norm_vals);
 
     ncnn::Extractor ex = net_.create_extractor();
 
@@ -140,11 +198,17 @@ int Yolo::detect(const unsigned char* rgba, int img_w, int img_h,
     if (out.empty())
         return -3;
 
-    // Ultralytics YOLO11 输出为 (4 + num_class) x anchors
-    // w == num_attrs 时每个 anchor 的 84 个属性连续存放，否则按属性行存放（(84, 8400)）
-    const int num_attrs = 4 + num_class_;
+    // Ultralytics YOLO 输出为 (4 + num_class) x anchors
+    // w == num_attrs 时每个 anchor 的属性连续存放，否则按属性行存放
+    const int num_attrs = 4 + config_.num_class;
     const bool attr_major = (out.w == num_attrs);
     const int num_anchors = attr_major ? out.h : out.w;
+    // 结构自检：输出属性维度必须与类别数匹配，否则说明模型与 manifest 不一致
+    if ((!attr_major && out.h != num_attrs) || num_anchors <= 0) {
+        fprintf(stderr, "unexpected output shape: w=%d h=%d c=%d, attrs=%d\n",
+                out.w, out.h, out.c, num_attrs);
+        return -5;
+    }
 
     const float* base = out.channel(0);
 
@@ -165,7 +229,7 @@ int Yolo::detect(const unsigned char* rgba, int img_w, int img_h,
 
         int label = -1;
         float score = 0.f;
-        for (int c = 0; c < num_class_; c++) {
+        for (int c = 0; c < config_.num_class; c++) {
             float s = val(4 + c);
             if (s > score) {
                 score = s;

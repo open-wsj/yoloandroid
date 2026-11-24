@@ -13,6 +13,17 @@
     <string name="settings_done">完成</string>
     <string name="settings_check_update">检查更新</string>
 
+    <string name="settings_model_title">模型管理</string>
+    <string name="settings_import_detect">导入检测模型 (.yolozip)</string>
+    <string name="settings_import_classify">导入分类模型 (.yolozip)</string>
+    <string name="settings_reset_models">恢复内置模型</string>
+    <string name="settings_model_note">模型包需包含 manifest.json、model.ncnn.param、model.ncnn.bin 与 labels.txt；仅支持 ncnn 格式的 YOLO 检测 / 分类模型。</string>
+    <string name="settings_model_info">检测模型：%1$s\n分类模型：%2$s</string>
+    <string name="settings_importing">正在导入模型…</string>
+    <string name="settings_import_ok">模型已导入并启用：%1$s</string>
+    <string name="settings_import_fail">导入失败：%1$s</string>
+    <string name="settings_reset_done">已恢复内置模型</string>
+
     <string name="media_preview_desc">媒体预览</string>
     <string name="btn_pick_video">导入视频</string>
     <string name="btn_pause_video">暂停</string>

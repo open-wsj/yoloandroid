@@ -4,16 +4,17 @@
 
 - 仓库地址：https://gitee.com/open-zynq/yoloandroid
 - 发布页：https://gitee.com/open-zynq/yoloandroid/releases
-- 当前版本：**v1.1.0**（versionCode 5）
+- 当前版本：**v1.2.0**（versionCode 6）
 
 ## 功能特性
 
 | 模式 | 功能 |
 | --- | --- |
-| 检测 | 摄像头实时检测（YOLO26m，80 类 COCO） |
+| 检测 | 摄像头实时检测（内置 YOLO26m，80 类 COCO） |
 | 检测 | 相册导入视频，逐帧检测并叠加检测框，支持暂停/继续/停止 |
-| 分类 | 相册导入图片分类（YOLO26m-cls，ImageNet 1000 类，Top-5） |
+| 分类 | 相册导入图片分类（内置 YOLO26m-cls，ImageNet 1000 类，Top-5） |
 | 分类 | 摄像头拍照后即时分类 |
+| 模型 | 导入 `.yolozip` 自定义检测/分类模型，导入后自动校验并启用，可一键恢复内置模型 |
 | 设置 | 检测/分类模式互斥切换 |
 | 设置 | 自动枚举设备全部逻辑摄像头（前置/后置等），切换后自动重连并刷新预览 |
 | 更新 | 冷启动自动检查 + 设置页手动检查，应用内下载、SHA-256 校验、系统安装器安装 |
@@ -202,6 +203,87 @@ ultralytics 导出的 ncnn 模型默认是 fp32，体积大（yolo26m 检测约 
 > 当前 v1.1.0 内置 fp16 模型：检测 41.0MB + 分类 23.3MB，Release APK 约 67MB。
 > 已用 Python ncnn 与 PyTorch 对比验证（bus.jpg：检测 5 个目标类别/置信度一致，分类 Top-3 完全一致）。
 
+## 自定义模型导入（v1.2.0）
+
+设置页 →「模型管理」可导入自定义模型包，导入后立即校验并设为当前模型；「恢复内置模型」可随时回退。
+
+### 模型包结构（`.yolozip`，本质是 zip）
+
+```
+manifest.json          # 元信息：任务类型、输入尺寸、类别数、预处理、后处理
+model.ncnn.param       # ncnn 结构文件（首行必须是 7767517）
+model.ncnn.bin         # ncnn 权重文件
+labels.txt             # 标签，每行一个类别，行数必须等于 numClasses
+```
+
+`manifest.json` 示例（检测）：
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my-detector",
+  "name": "我的检测模型",
+  "version": "1.0.0",
+  "task": "detect",
+  "input": {
+    "width": 640,
+    "height": 640,
+    "colorOrder": "RGB",
+    "scale": 0.0039215686,
+    "mean": [0, 0, 0],
+    "std": [1, 1, 1],
+    "padValue": 114
+  },
+  "classes": { "numClasses": 3, "labelsFile": "labels.txt" },
+  "files": { "param": "model.ncnn.param", "bin": "model.ncnn.bin" },
+  "postprocess": { "type": "yolo_anchor", "probThreshold": 0.25, "nmsThreshold": 0.45 }
+}
+```
+
+分类模型把 `task` 改为 `classify`，`input.width/height` 用分类输入尺寸（如 224），
+`postprocess` 改为：
+
+```json
+{ "type": "softmax_topk", "applySoftmax": false, "topk": 5 }
+```
+
+### 打包脚本
+
+仓库自带 `tools/pack_model.py`，只依赖 Python 标准库：
+
+```powershell
+# 检测模型
+python tools/pack_model.py --param model.ncnn.param --bin model.ncnn.bin --labels labels.txt ^
+    --task detect --id my-detector --name "我的检测模型" --version 1.0.0 ^
+    --input-size 640 --output my-detector.yolozip
+
+# 分类模型（类别数自动取标签行数）
+python tools/pack_model.py --param model.ncnn.param --bin model.ncnn.bin --labels labels.txt ^
+    --task classify --id my-classifier --name "我的分类模型" --version 1.0.0 ^
+    --input-size 224 --output my-classifier.yolozip
+```
+
+脚本会校验 param 魔数、标签数量与输入尺寸（检测必须为 32 的倍数），并自动生成 manifest。
+
+### 导入流程
+
+1. 把 `.yolozip` 传到手机（下载目录即可）；
+2. 设置页点「导入检测模型」或「导入分类模型」，在系统文件选择器中选择该包；
+3. App 会依次校验 zip 结构（防路径穿越/解压炸弹）、manifest、标签行数、param 魔数，通过后落盘并设为当前模型；
+4. 返回主界面即自动重载模型，状态栏与设置页会显示当前模型。
+
+导入失败会给出具体原因，例如「标签行数 3 与类别数 80 不一致」「param 文件格式不正确」；失败不会影响当前模型。
+
+### 支持边界
+
+- 仅支持 **ncnn 格式**的 YOLO 检测/分类模型；`.pt`、`.onnx` 需先在 PC 端导出。
+- 检测仅支持锚点式输出（`4 + numClasses` × anchors，如 `(84, 8400)`），**不支持端到端 NMS-free 输出（300×6）**。
+- 只支持单输入单输出；输入尺寸 64–2048，检测需 32 的倍数。
+- 标签行数必须等于 `numClasses`，模型实际输出类别数不一致会被拒绝。
+- 预处理通过 `input.scale/mean/std` 描述：Ultralytics 导出的模型通常填 `scale=1/255、mean=0、std=1`。
+- 分类模型的 Softmax 若未包含在模型内，请把 `applySoftmax` 设为 `true`。
+- 仅 arm64-v8a；模型算子必须被 ncnn 20250503 支持。
+
 ## 应用内更新（发布方操作）
 
 客户端冷启动会请求仓库根目录的 [`update.json`](update.json)（6 小时节流），设置页也可手动检查。
@@ -376,7 +458,7 @@ v1.1.0 起模型导出即 fp16：`yolo26m.ncnn.bin` 41.0MB、`yolo26m-cls.ncnn.b
 - 仅支持 `arm64-v8a`，未打包 32 位与 x86 ABI
 - 纯 CPU 推理，YOLO26m 在手机上约 2.9–3.0 FPS
 - 视频检测为抽帧离线处理（300ms/帧），并非实时逐帧播放
-- 分类模型为 ImageNet 1000 类，不支持自定义类别（需自行导出并替换标签）
+- 分类默认模型为 ImageNet 1000 类；自定义类别请导入自己的 `.yolozip` 模型包
 - 应用为单 Activity 竖屏布局，未适配平板横屏
 - 应用内下载依赖应用进程存活，下载期间建议保持前台
 

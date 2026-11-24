@@ -1,17 +1,39 @@
 #include "yolo_cls.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+
+void YoloCls::applyConfig(int num_threads, const YoloClsConfig& config) {
+    config_ = config;
+    if (config_.input_size <= 0) {
+        config_.input_size = 224;
+    }
+    if (config_.num_class <= 0) {
+        config_.num_class = 1000;
+    }
+    if (config_.scale <= 0.f) {
+        config_.scale = 1.f / 255.f;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (config_.std[i] <= 0.f) {
+            config_.std[i] = 1.f;
+        }
+    }
+
+    net_.opt.use_vulkan_compute = false;
+    net_.opt.num_threads = num_threads > 0 ? num_threads : 4;
+}
 
 int YoloCls::load(AAssetManager* mgr, const char* param_name, const char* bin_name,
-                  int num_threads) {
+                  int num_threads, const YoloClsConfig& config) {
     if (!mgr) {
         fprintf(stderr, "asset manager is null\n");
         return -1;
     }
 
-    net_.opt.use_vulkan_compute = false;
-    net_.opt.num_threads = num_threads > 0 ? num_threads : 4;
+    applyConfig(num_threads, config);
 
     int ret = net_.load_param(mgr, param_name);
     if (ret != 0) {
@@ -29,13 +51,37 @@ int YoloCls::load(AAssetManager* mgr, const char* param_name, const char* bin_na
     return 0;
 }
 
+int YoloCls::loadFromFile(const char* param_path, const char* bin_path,
+                          int num_threads, const YoloClsConfig& config) {
+    if (!param_path || !bin_path) {
+        return -1;
+    }
+
+    applyConfig(num_threads, config);
+
+    int ret = net_.load_param(param_path);
+    if (ret != 0) {
+        fprintf(stderr, "load_param failed: %s\n", param_path);
+        return ret;
+    }
+
+    ret = net_.load_model(bin_path);
+    if (ret != 0) {
+        fprintf(stderr, "load_model failed: %s\n", bin_path);
+        return ret;
+    }
+
+    ready_ = true;
+    return 0;
+}
+
 int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
                       std::vector<std::pair<int, float>>& results, int topk) {
     results.clear();
     if (!ready_ || !rgba || img_w <= 0 || img_h <= 0)
         return -1;
 
-    // 与 YOLO 分类训练一致：先中心裁成正方形，再缩放到 224
+    // 与 YOLO 分类训练一致：先中心裁成正方形，再缩放到输入尺寸
     const int side = std::min(img_w, img_h);
     const int crop_x = (img_w - side) / 2;
     const int crop_y = (img_h - side) / 2;
@@ -43,12 +89,16 @@ int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
 
     ncnn::Mat in = ncnn::Mat::from_pixels_resize(
             crop, ncnn::Mat::PIXEL_RGBA2RGB, side, side, img_w * 4,
-            input_size_, input_size_);
+            config_.input_size, config_.input_size);
 
-    // Ultralytics 分类推理的输入为 [0, 1]（classify_transforms 只做 ToTensor），
-    // 不需要 ImageNet mean/std，多了反而会全错。
-    const float norm_vals[3] = {1.f / 255.f, 1.f / 255.f, 1.f / 255.f};
-    in.substract_mean_normalize(0, norm_vals);
+    // (v * scale - mean) / std，转换为 ncnn 的 (v - mean') * norm' 形式
+    float mean_vals[3];
+    float norm_vals[3];
+    for (int i = 0; i < 3; i++) {
+        mean_vals[i] = config_.mean[i] / config_.scale;
+        norm_vals[i] = config_.scale / config_.std[i];
+    }
+    in.substract_mean_normalize(mean_vals, norm_vals);
 
     ncnn::Extractor ex = net_.create_extractor();
 
@@ -64,12 +114,15 @@ int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
     if (out.empty())
         return -3;
 
-    // 导出的模型末尾已带 Softmax，out 即各类别概率。
     // 输出可能为单通道 (num_class, 1, 1)，也可能为多 channel (1, 1, num_class)，
     // 多 channel 时每通道有对齐填充，必须逐通道读取。
     const int n = out.w * out.h * out.c;
     if (n <= 0)
         return -4;
+    if (n != config_.num_class) {
+        fprintf(stderr, "unexpected output size: %d, expected %d\n", n, config_.num_class);
+        return -5;
+    }
 
     std::vector<float> scores(n);
     if (out.c > 1 && out.w * out.h == 1) {
@@ -78,6 +131,22 @@ int YoloCls::classify(const unsigned char* rgba, int img_w, int img_h,
     } else {
         const float* src = out.channel(0);
         std::copy(src, src + n, scores.begin());
+    }
+
+    // 有些模型导出时未带 Softmax，需要在后处理中补上
+    if (config_.apply_softmax) {
+        float max_v = scores[0];
+        for (int i = 1; i < n; i++)
+            max_v = std::max(max_v, scores[i]);
+        float sum = 0.f;
+        for (int i = 0; i < n; i++) {
+            scores[i] = std::exp(scores[i] - max_v);
+            sum += scores[i];
+        }
+        if (sum > 0.f) {
+            for (int i = 0; i < n; i++)
+                scores[i] /= sum;
+        }
     }
 
     std::vector<int> order(n);

@@ -2,6 +2,7 @@ package com.example.yolo11ncnn;
 
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.RadioButton;
@@ -10,18 +11,33 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.ComponentActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-/** 设置页：工作模式 + 摄像头选择。 */
+/** 设置页：工作模式 + 摄像头选择 + 模型管理。 */
 public class SettingsActivity extends ComponentActivity {
 
     private final List<String> cameraIds = new ArrayList<>();
+    private final ExecutorService importExecutor = Executors.newSingleThreadExecutor();
     private boolean binding;
+    private String pendingTask;
+
+    private final ActivityResultLauncher<String[]> pickModel =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                String task = pendingTask;
+                pendingTask = null;
+                if (uri != null && task != null) {
+                    importModel(uri, task);
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +71,21 @@ public class SettingsActivity extends ComponentActivity {
         });
 
         findViewById(R.id.settings_done).setOnClickListener(v -> finish());
+
+        findViewById(R.id.btn_import_detect).setOnClickListener(v -> {
+            pendingTask = ModelSpec.TASK_DETECT;
+            pickModel.launch(new String[]{"application/zip", "application/octet-stream", "*/*"});
+        });
+        findViewById(R.id.btn_import_classify).setOnClickListener(v -> {
+            pendingTask = ModelSpec.TASK_CLASSIFY;
+            pickModel.launch(new String[]{"application/zip", "application/octet-stream", "*/*"});
+        });
+        findViewById(R.id.btn_reset_models).setOnClickListener(v -> {
+            ModelManager.resetToBuiltin(this);
+            refreshModelInfo();
+            Toast.makeText(this, R.string.settings_reset_done, Toast.LENGTH_SHORT).show();
+        });
+        refreshModelInfo();
 
         TextView versionText = findViewById(R.id.settings_version);
         versionText.setText(String.format(java.util.Locale.US,
@@ -128,6 +159,39 @@ public class SettingsActivity extends ComponentActivity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {
             }
         });
+    }
+
+    private void importModel(Uri uri, String task) {
+        Toast.makeText(this, R.string.settings_importing, Toast.LENGTH_SHORT).show();
+        importExecutor.execute(() -> {
+            try {
+                ModelManager.ImportedModel imported = ModelManager.importPackage(this, uri, task);
+                runOnUiThread(() -> {
+                    refreshModelInfo();
+                    Toast.makeText(this,
+                            getString(R.string.settings_import_ok, imported.spec.name),
+                            Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable t) {
+                String message = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+                runOnUiThread(() -> Toast.makeText(this,
+                        getString(R.string.settings_import_fail, message),
+                        Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    private void refreshModelInfo() {
+        TextView info = findViewById(R.id.model_info);
+        info.setText(getString(R.string.settings_model_info,
+                ModelManager.describe(this, ModelSpec.TASK_DETECT),
+                ModelManager.describe(this, ModelSpec.TASK_CLASSIFY)));
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        importExecutor.shutdown();
     }
 
     private void applyInsets() {
